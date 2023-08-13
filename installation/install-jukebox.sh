@@ -11,8 +11,8 @@
 export LC_ALL=C
 
 # Set Repo variables if not specified when calling the script
-GIT_USER=${GIT_USER:-"MiczFlor"}
-GIT_BRANCH=${GIT_BRANCH:-"future3/main"}
+GIT_USER=${GIT_USER:-"votti"}
+GIT_BRANCH=${GIT_BRANCH:-"future3/vz"}
 
 # Constants
 GIT_REPO_NAME="RPi-Jukebox-RFID"
