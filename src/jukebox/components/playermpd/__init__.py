@@ -442,9 +442,10 @@ class PlayerMPD:
     @plugs.tag
     def resume(self):
         with self.mpd_lock:
-            songpos = self.current_folder_status["CURRENTSONGPOS"]
-            elapsed = self.current_folder_status["ELAPSED"]
-            self.mpd_client.seek(songpos, elapsed)
+            songpos = self.current_folder_status.get("CURRENTSONGPOS", 0)
+            elapsed = self.current_folder_status.get("ELAPSED", 0)
+            if songpos != 0 or elapsed != 0:
+                self.mpd_client.seek(songpos, elapsed)
             self.mpd_client.play()
 
     @plugs.tag
