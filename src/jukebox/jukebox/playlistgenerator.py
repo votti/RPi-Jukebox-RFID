@@ -70,6 +70,14 @@ TYPE_PODCAST = 3
 TYPE_DECODE = ['file', 'directory', 'stream', 'podcast']
 
 
+class PseudoDirEntry:
+   def __init__(self, path):
+      import os, os.path
+      self.path = os.path.realpath(path)
+      self.name = os.path.basename(self.path)
+      self.is_dir = os.path.isdir(self.path)
+      self.stat = lambda: os.stat(self.path)
+
 class PlaylistEntry:
     def __init__(self, filetype: int, name: str, path: str):
         self._type = filetype
@@ -230,11 +238,15 @@ class PlaylistCollector:
         files = []
         playlist = []
         self._folder = os.path.abspath(os.path.join(self._music_library_base_path, path))
-        for f in os.scandir(self._folder):
-            if f.is_dir(follow_symlinks=True):
-                dirs.append(f)
-            if self._is_valid(f):
-                files.append(f)
+        if os.path.isfile(self._folder):
+            files.append(PseudoDirEntry(self._folder))
+            path = os.path.dirname(self._folder)
+        else:
+            for f in os.scandir(self._folder):
+                if f.is_dir(follow_symlinks=True):
+                    dirs.append(f)
+                if self._is_valid(f):
+                    files.append(f)
         # Sort the directory content (case in-sensitive) to give reproducible results across different machines
         # And do this before parsing special content files. Reason: If there is a special content file (e.g. podcast)
         # which links to multiple streams, these will already be ordered
