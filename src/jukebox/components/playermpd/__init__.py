@@ -329,6 +329,30 @@ class PlayerMPD:
             self.mpd_client.seekcur(new_time)
 
     @plugs.tag
+    def seek_back(self, time_delta):
+        time_delta = float(time_delta)
+        with self.mpd_lock:
+            status = self.mpd_client.status()
+            elapsed = status.get('elapsed')
+            if elapsed is None:
+                elapsed_delta = -time_delta
+            else:
+                elapsed_delta = float(elapsed) - time_delta
+            if elapsed_delta > 0:
+                return self.mpd_client.seekcur(elapsed_delta)
+            else:
+                song_id_old = status.get('songid')
+                self.mpd_client.previous()
+                new_status = self.mpd_client.status()
+                if new_status.get('songid') == song_id_old:
+                    self.mpd.seekcur(0)
+                else:
+                    duration = new_status.get('duration', 0)
+                    new_pos = float(duration)-time_delta
+                    if new_pos > 0:
+                        self.mpd_client.seekcur(new_pos)
+
+    @plugs.tag
     def shuffle(self, random):
         # As long as we don't work with waiting lists (aka playlist), this implementation is ok!
         self.mpd_retry_with_mutex(self.mpd_client.random, 1 if random else 0)

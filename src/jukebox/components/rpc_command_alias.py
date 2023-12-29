@@ -47,6 +47,16 @@ cmd_alias_definitions = {
         'plugin': 'ctrl',
         'method': 'next',
         'ignore_card_removal_action': True},
+    'seek': {
+        'package': 'player',
+        'plugin': 'ctrl',
+        'method': 'seek',
+        'ignore_card_removal_action': True},
+    'seek_back': {
+        'package': 'player',
+        'plugin': 'ctrl',
+        'method': 'seek_back',
+        'ignore_card_removal_action': True},
     'prev_song': {
         'package': 'player',
         'plugin': 'ctrl',
