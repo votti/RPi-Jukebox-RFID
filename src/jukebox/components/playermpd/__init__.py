@@ -445,7 +445,10 @@ class PlayerMPD:
             songpos = self.current_folder_status.get("CURRENTSONGPOS", 0)
             elapsed = self.current_folder_status.get("ELAPSED", 0)
             if songpos != 0 or elapsed != 0:
-                self.mpd_client.seek(songpos, elapsed)
+                try:
+                    self.mpd_client.seek(songpos, elapsed)
+                except:
+                    pass
             self.mpd_client.play()
 
     @plugs.tag
