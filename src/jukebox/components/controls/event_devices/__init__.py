@@ -4,7 +4,7 @@ Plugin to register event_devices (ie USB controllers, keyboards etc) in a
 
 This effectively does:
 
-    * parse the configured event devices from the jukebox.yaml
+    * parse the configured event devices from the evdev.yaml
     * setup listen threads
 
 """
@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 from typing import Callable
+from typing import Tuple
 
 import jukebox.cfghandler
 import jukebox.plugs as plugin
@@ -19,7 +20,8 @@ import jukebox.utils
 from components.controls.common.evdev_listener import EvDevKeyListener
 
 logger = logging.getLogger("jb.EventDevice")
-cfg = jukebox.cfghandler.get_handler("jukebox")
+cfg_main = jukebox.cfghandler.get_handler("jukebox")
+cfg_evdev = jukebox.cfghandler.get_handler("eventdevices")
 
 # Keep track of all active key event listener threads
 # Removal of dead listener threads is done in lazy fashion:
@@ -27,6 +29,18 @@ cfg = jukebox.cfghandler.get_handler("jukebox")
 listener: list[EvDevKeyListener] = []
 # Running count of all created listener threads for unique thread naming IDs
 listener_cnt = 0
+
+#: Indicates that the module is enabled and loaded w/o errors
+IS_ENABLED: bool = False
+#: The path of the config file the event device configuration was loaded from
+CONFIG_FILE: str
+
+# Constants
+_TYPE_BUTTON = 'Button'
+_ACTION_ON_PRESS = 'on_press'
+
+_SUPPORTED_TYPES = [_TYPE_BUTTON]
+_SUPPORTED_ACTIONS = {_TYPE_BUTTON: _ACTION_ON_PRESS}
 
 
 @plugin.register
@@ -58,7 +72,7 @@ def activate(
     listener = list(filter(lambda x: x.is_alive(), listener))
     # Check that there is no running thread for this device already
     for thread in listener:
-        if thread.device_request == device_name and thread.is_alive():
+        if thread.device_name_request == device_name and thread.is_alive():
             logger.debug(
                 "Event device listener thread already active for '%s'",
                 device_name,
@@ -87,32 +101,116 @@ def initialize():
     """Initialize event device button listener from config
 
     Initializes event buttons from the main configuration file.
-    Please see :ref:`userguide/event_devices:Event Devices` for a specification of the format.
+    Please see the documentation `builders/event-devices.md` for a specification of the format.
     """
-    for name, config in cfg.getn(
-        "event_devices",
-        "devices",
-        default={},
-    ).items():
-        logger.debug("activate %s", name)
-        button_mapping = config.get("mapping", default={})
-        button_callbacks: dict[int, Callable] = {}
-        for key, action_request in button_mapping.items():
-            button_callbacks[key] = jukebox.utils.bind_rpc_command(
-                action_request,
-                dereference=False,
-                logger=logger,
+    global IS_ENABLED
+    global CONFIG_FILE
+    IS_ENABLED = False
+    enable = cfg_main.setndefault('evdev', 'enable', value=False)
+    CONFIG_FILE = cfg_main.setndefault('evdev', 'config_file', value='../../shared/settings/evdev.yaml')
+    if not enable:
+        return
+    try:
+        jukebox.cfghandler.load_yaml(cfg_evdev, CONFIG_FILE)
+    except Exception as e:
+        logger.error(f"Disable Event Devices due to error loading evdev config file. {e.__class__.__name__}: {e}")
+        return
+
+    IS_ENABLED = True
+
+    with cfg_evdev:
+        for name, config in cfg_evdev.getn(
+            "devices",
+            default={},
+        ).items():
+            logger.debug("activate %s", name)
+            try:
+                device_name, exact, button_callbacks = parse_device_config(config)
+            except Exception as e:
+                logger.error(f"Error parsing event device config for '{name}'. {e.__class__.__name__}: {e}")
+                continue
+
+            logger.debug(
+                f'Call activate with: "{device_name}" and exact: {exact}',
             )
-        device_name = config.get("device_name")
-        exact = config.get("exact", default=False)
-        logger.debug(
-            f'Call activate with: "{device_name}" and exact: {exact}',
+            activate(
+                device_name,
+                button_callbacks=button_callbacks,
+                exact=exact,
+            )
+
+
+def parse_device_config(config: dict) -> Tuple[str, bool, dict[int, Callable]]:
+    """Parse the device configuration from the config file
+
+    :param config: The configuration of the device
+    :type config: dict
+    :return: The parsed device configuration
+    :rtype: Tuple[str, bool, dict[int, Callable]]
+    """
+    device_name = config.get("device_name")
+    if device_name is None:
+        raise ValueError("'device_name' is required but missing")
+    exact = bool(config.get("exact", False))
+    input_devices = config.get("input_devices", {})
+    # Raise warning if not used config present
+    if 'output_devices' in config:
+        logger.warning(
+            "Output devices are not yet supported for event devices",
         )
-        activate(
-            device_name,
-            button_callbacks=button_callbacks,
-            exact=exact,
+
+    # Parse input devices and convert them to button mappings.
+    # Due to the current implementation of the Event Device Listener,
+    # only the 'on_press' action is supported.
+    button_mapping = _input_devices_to_key_mapping(input_devices)
+    button_callbacks: dict[int, Callable] = {}
+    for key, action_request in button_mapping.items():
+        button_callbacks[key] = jukebox.utils.bind_rpc_command(
+            action_request,
+            dereference=False,
+            logger=logger,
         )
+    return device_name, exact, button_callbacks
+
+
+def _input_devices_to_key_mapping(input_devices: dict) -> dict:
+    """Convert input devices to key mapping
+
+    Currently this only supports 'button' input devices with the 'on_press' action.
+
+    :param input_devices: The input devices
+    :type input_devices: dict
+    :return: The mapping of key_code to action
+    :rtype: dict
+    """
+    mapping = {}
+    for nickname, device in input_devices.items():
+        input_type = device.get('type')
+        if input_type not in _SUPPORTED_TYPES:
+            logger.warning(
+                f"Input '{nickname}' device type '{input_type}' is not supported",
+            )
+            continue
+
+        key_code = device.get('kwargs', {}).get('key_code')
+        if key_code is None:
+            logger.warning(
+                f"Input '{nickname}' has no key_code and cannot be mapped.",
+            )
+            continue
+
+        actions = device.get('actions')
+
+        for action_name, action in actions.items():
+            if action_name not in _SUPPORTED_ACTIONS[_TYPE_BUTTON]:
+                logger.warning(
+                    f"Input '{nickname}' has unsupported action '{action_name}'.\n"
+                    f"Currently supported actions: {_SUPPORTED_ACTIONS}",
+                )
+            if action_name == _ACTION_ON_PRESS:
+                mapping[key_code] = action
+
+    return mapping
 
 
 @plugin.atexit

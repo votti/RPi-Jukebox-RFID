@@ -1,7 +1,7 @@
 """
 This file provides definitions for RPC command aliases
 
-See :ref:`userguide/rpc_commands`
+See [RPC Commands](../../builders/rpc-commands.md)
 """
 # --------------------------------------------------------------
 # Pre-defined aliases
@@ -88,8 +88,24 @@ cmd_alias_definitions = {
         'package': 'player',
         'plugin': 'ctrl',
         'method': 'toggle',
-        'ignore_card_removal_action': True,
-    },
+        'ignore_card_removal_action': True},
+    'shuffle': {
+        'package': 'player',
+        'plugin': 'ctrl',
+        'method': 'shuffle',
+        'note': 'Shuffle',
+        'ignore_card_removal_action': True},
+    'repeat': {
+        'package': 'player',
+        'plugin': 'ctrl',
+        'method': 'repeat',
+        'note': 'Repeat',
+        'ignore_card_removal_action': True},
+    'flush_coverart_cache': {
+        'package': 'player',
+        'plugin': 'ctrl',
+        'method': 'flush_coverart_cache'},
+
     # VOLUME
     'set_volume': {
         'package': 'volume',
